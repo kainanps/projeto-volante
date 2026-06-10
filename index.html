@@ -15,7 +15,7 @@
             background-color: #222;
             color: white;
             margin: 0;
-            overflow: hidden; /* Impede a tela de rolar */
+            overflow: hidden;
         }
         button {
             padding: 20px 40px;
@@ -27,27 +27,33 @@
             margin-bottom: 20px;
             cursor: pointer;
         }
-        #status { font-size: 18px; color: #ffeb3b; }
-        #angulo { font-size: 48px; font-weight: bold; margin-top: 20px; }
+        #status { font-size: 18px; color: #ffeb3b; margin-bottom: 10px; }
+        .dado { font-size: 32px; font-weight: bold; margin: 10px 0; }
+        .label { font-size: 14px; color: #aaa; }
     </style>
 </head>
 <body>
 
     <button id="btnIniciar">Iniciar Volante</button>
     <div id="status">Aguardando...</div>
-    <div id="angulo">0°</div>
+    
+    <div class="label">DIREÇÃO</div>
+    <div id="divVolante" class="dado">0°</div>
+    
+    <div class="label">PEDAIS</div>
+    <div id="divPedal" class="dado">Neutro</div>
 
     <script>
         // === COLOQUE O IP DO SEU COMPUTADOR AQUI ===
-        const ipComputador = "192.168.0.3"; 
+        const ipComputador = "192.168.1.XXX"; 
         const porta = "8080";
         
         let ws;
         const statusDiv = document.getElementById('status');
-        const anguloDiv = document.getElementById('angulo');
+        const divVolante = document.getElementById('divVolante');
+        const divPedal = document.getElementById('divPedal');
         const btnIniciar = document.getElementById('btnIniciar');
 
-        // Função para conectar no PC via WebSocket
         function conectarWebSocket() {
             ws = new WebSocket(`ws://${ipComputador}:${porta}`);
             
@@ -63,24 +69,28 @@
             };
         }
 
-        // Função que lê os sensores do celular
         function processarSensores(evento) {
-            // Se o celular estiver em modo paisagem (deitado), o eixo beta é o ideal para o giro
-            let inclinacao = evento.beta; 
+            // Em modo paisagem, Beta costuma ser o giro e Gamma a inclinação frontal.
+            let giro = Math.round(evento.beta); 
+            let inclinacao_frontal = Math.round(evento.gamma);
 
-            // Arredonda para não sobrecarregar com decimais
-            inclinacao = Math.round(inclinacao);
-            anguloDiv.innerText = `${inclinacao}°`;
+            divVolante.innerText = `${giro}°`;
+            
+            // Texto visual na tela do celular para ajudar a entender o que está acontecendo
+            if (inclinacao_frontal > 15) divPedal.innerText = "Acelerando ⬆️";
+            else if (inclinacao_frontal < -15) divPedal.innerText = "Ré / Freio ⬇️";
+            else divPedal.innerText = "Neutro ⏹️";
 
-            // Envia para o PC se o WebSocket estiver aberto
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ angulo: inclinacao }));
+                // Envia os dois comandos ao mesmo tempo
+                ws.send(JSON.stringify({ 
+                    volante: giro,
+                    pedal: inclinacao_frontal
+                }));
             }
         }
 
-        // Botão para iniciar (Navegadores exigem que o usuário clique em algo antes de liberar sensores)
         btnIniciar.addEventListener('click', () => {
-            // Pede permissão para iOS (se necessário) ou já inicia no Android
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission()
                     .then(permissao => {
@@ -89,10 +99,8 @@
                             conectarWebSocket();
                             btnIniciar.style.display = 'none';
                         }
-                    })
-                    .catch(console.error);
+                    }).catch(console.error);
             } else {
-                // Para Android e computadores
                 window.addEventListener('deviceorientation', processarSensores);
                 conectarWebSocket();
                 btnIniciar.style.display = 'none';

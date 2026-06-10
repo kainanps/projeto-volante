@@ -1,42 +1,81 @@
 import asyncio
 import json
 import websockets
-from pynput.mouse import Controller
+from pynput.mouse import Controller as MouseController
+from pynput.keyboard import Controller as KeyboardController
 
-# Inicializa o controlador do mouse
-mouse = Controller()
+# Inicializa os controladores
+mouse = MouseController()
+teclado = KeyboardController()
 
-# Configuração da tela (Ajuste para a resolução do seu monitor principal)
+# Configuração da tela
 LARGURA_TELA = 1920
 CENTRO_X = LARGURA_TELA // 2
-ALTURA_Y = 540 # Meio da tela no eixo Y
+ALTURA_Y = 540
+
+# Variável para controlar se já estamos apertando o pedal, evitando "spam" de teclas
+estado_pedal = None 
 
 async def processar_comando(websocket):
+    global estado_pedal
     print("📱 Celular conectado com sucesso!")
     try:
         async for mensagem in websocket:
             dados = json.loads(mensagem)
-            angulo = dados.get('angulo', 0)
+            volante = dados.get('volante', 0)
+            pedal = dados.get('pedal', 0)
             
-            # Limita o ângulo entre -45 (esquerda) e 45 (direita) para não bugar
-            angulo_limitado = max(-45, min(45, angulo))
+            # ==========================================
+            # 1. CONTROLE DA DIREÇÃO (Eixo X do Mouse)
+            # ==========================================
             
-            # Converte o ângulo (-45 a 45) para a posição X da tela (0 a LARGURA_TELA)
-            # Regra de três simples para mapear a inclinação para a tela
-            posicao_x = CENTRO_X + (angulo_limitado * (LARGURA_TELA / 90))
+            # Zona morta: Se o volante estiver entre -5 e 5 graus, o caminhão vai reto
+            if abs(volante) < 5:
+                volante = 0
             
-            # Move o mouse instantaneamente
+            # Aumentamos o limite para 70 graus para deixar a direção menos sensível
+            volante_limitado = max(-70, min(70, volante))
+            
+            # Regra de três considerando a nova amplitude total (140 graus)
+            posicao_x = CENTRO_X + (volante_limitado * (LARGURA_TELA / 140))
             mouse.position = (posicao_x, ALTURA_Y)
+            
+            # ==========================================
+            # 2. CONTROLE DOS PEDAIS (Teclas W e S)
+            # ==========================================
+            
+            # Se inclinar mais de 15 graus para um lado, acelera
+            if pedal > 15:
+                if estado_pedal != 'frente':
+                    teclado.release('s')
+                    teclado.press('w')
+                    estado_pedal = 'frente'
+                    
+            # Se inclinar mais de 15 graus para o outro, freia/ré
+            elif pedal < -15:
+                if estado_pedal != 're':
+                    teclado.release('w')
+                    teclado.press('s')
+                    estado_pedal = 're'
+                    
+            # Se estiver na zona neutra da inclinação frontal, solta os pedais
+            else:
+                if estado_pedal is != None:
+                    teclado.release('w')
+                    teclado.release('s')
+                    estado_pedal = None
             
     except websockets.exceptions.ConnectionClosed:
         print("Celular desconectado.")
+        # Solta as teclas caso a conexão caia
+        teclado.release('w')
+        teclado.release('s')
+        estado_pedal = None
 
 async def main():
-    # O servidor vai rodar na porta 8080 em todas as interfaces de rede do PC
     async with websockets.serve(processar_comando, "0.0.0.0", 8080):
         print("🚀 Servidor rodando! Aguardando conexão do celular...")
-        print("Certifique-se de colocar o IP deste computador no arquivo HTML do celular.")
-        await asyncio.Future()  # Roda para sempre
+        await asyncio.Future()
 
 if __name__ == "__main__":
     asyncio.run(main())
