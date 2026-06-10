@@ -59,8 +59,9 @@ async def processar_comando(websocket):
                     estado_pedal = 're'
                     
             # Se estiver na zona neutra da inclinação frontal, solta os pedais
+            # Se estiver na zona neutra da inclinação frontal, solta os pedais
             else:
-                if estado_pedal is != None:
+                if estado_pedal is not None:
                     teclado.release('w')
                     teclado.release('s')
                     estado_pedal = None
