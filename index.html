@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volante Web</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #222;
+            color: white;
+            margin: 0;
+            overflow: hidden; /* Impede a tela de rolar */
+        }
+        button {
+            padding: 20px 40px;
+            font-size: 24px;
+            border-radius: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            margin-bottom: 20px;
+            cursor: pointer;
+        }
+        #status { font-size: 18px; color: #ffeb3b; }
+        #angulo { font-size: 48px; font-weight: bold; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+    <button id="btnIniciar">Iniciar Volante</button>
+    <div id="status">Aguardando...</div>
+    <div id="angulo">0°</div>
+
+    <script>
+        // === COLOQUE O IP DO SEU COMPUTADOR AQUI ===
+        const ipComputador = "192.168.0.3"; 
+        const porta = "8080";
+        
+        let ws;
+        const statusDiv = document.getElementById('status');
+        const anguloDiv = document.getElementById('angulo');
+        const btnIniciar = document.getElementById('btnIniciar');
+
+        // Função para conectar no PC via WebSocket
+        function conectarWebSocket() {
+            ws = new WebSocket(`ws://${ipComputador}:${porta}`);
+            
+            ws.onopen = () => {
+                statusDiv.innerText = "✅ Conectado ao PC!";
+                statusDiv.style.color = "#4CAF50";
+            };
+            
+            ws.onclose = () => {
+                statusDiv.innerText = "❌ Desconectado. Tentando novamente...";
+                statusDiv.style.color = "#f44336";
+                setTimeout(conectarWebSocket, 2000);
+            };
+        }
+
+        // Função que lê os sensores do celular
+        function processarSensores(evento) {
+            // Se o celular estiver em modo paisagem (deitado), o eixo beta é o ideal para o giro
+            let inclinacao = evento.beta; 
+
+            // Arredonda para não sobrecarregar com decimais
+            inclinacao = Math.round(inclinacao);
+            anguloDiv.innerText = `${inclinacao}°`;
+
+            // Envia para o PC se o WebSocket estiver aberto
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ angulo: inclinacao }));
+            }
+        }
+
+        // Botão para iniciar (Navegadores exigem que o usuário clique em algo antes de liberar sensores)
+        btnIniciar.addEventListener('click', () => {
+            // Pede permissão para iOS (se necessário) ou já inicia no Android
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(permissao => {
+                        if (permissao === 'granted') {
+                            window.addEventListener('deviceorientation', processarSensores);
+                            conectarWebSocket();
+                            btnIniciar.style.display = 'none';
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                // Para Android e computadores
+                window.addEventListener('deviceorientation', processarSensores);
+                conectarWebSocket();
+                btnIniciar.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
