@@ -13,8 +13,7 @@ LARGURA_TELA = 1920
 CENTRO_X = LARGURA_TELA // 2
 ALTURA_Y = 540
 
-# Variável para controlar se já estamos apertando o pedal, evitando "spam" de teclas
-estado_pedal = None 
+estado_pedal = 'neutro'
 
 async def processar_comando(websocket):
     global estado_pedal
@@ -23,55 +22,44 @@ async def processar_comando(websocket):
         async for mensagem in websocket:
             dados = json.loads(mensagem)
             volante = dados.get('volante', 0)
-            pedal = dados.get('pedal', 0)
+            pedal = dados.get('pedal', 'neutro')
             
             # ==========================================
             # 1. CONTROLE DA DIREÇÃO (Eixo X do Mouse)
             # ==========================================
-            
-            # Zona morta: Se o volante estiver entre -5 e 5 graus, o caminhão vai reto
             if abs(volante) < 5:
                 volante = 0
             
-            # Aumentamos o limite para 70 graus para deixar a direção menos sensível
             volante_limitado = max(-70, min(70, volante))
-            
-            # Regra de três considerando a nova amplitude total (140 graus)
             posicao_x = CENTRO_X + (volante_limitado * (LARGURA_TELA / 140))
             mouse.position = (posicao_x, ALTURA_Y)
             
             # ==========================================
-            # 2. CONTROLE DOS PEDAIS (Teclas W e S)
+            # 2. CONTROLE DOS PEDAIS (Botões da Tela)
             # ==========================================
-            
-            # Se inclinar mais de 15 graus para um lado, acelera
-            if pedal > 15:
+            if pedal == 'frente':
                 if estado_pedal != 'frente':
                     teclado.release('s')
                     teclado.press('w')
                     estado_pedal = 'frente'
                     
-            # Se inclinar mais de 15 graus para o outro, freia/ré
-            elif pedal < -15:
+            elif pedal == 're':
                 if estado_pedal != 're':
                     teclado.release('w')
                     teclado.press('s')
                     estado_pedal = 're'
                     
-            # Se estiver na zona neutra da inclinação frontal, solta os pedais
-            # Se estiver na zona neutra da inclinação frontal, solta os pedais
-            else:
-                if estado_pedal is not None:
+            else: # neutro
+                if estado_pedal != 'neutro':
                     teclado.release('w')
                     teclado.release('s')
-                    estado_pedal = None
+                    estado_pedal = 'neutro'
             
     except websockets.exceptions.ConnectionClosed:
         print("Celular desconectado.")
-        # Solta as teclas caso a conexão caia
         teclado.release('w')
         teclado.release('s')
-        estado_pedal = None
+        estado_pedal = 'neutro'
 
 async def main():
     async with websockets.serve(processar_comando, "0.0.0.0", 8080):

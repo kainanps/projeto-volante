@@ -2,57 +2,105 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Volante Web</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
             background-color: #222;
             color: white;
             margin: 0;
             overflow: hidden;
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+            /* Impede seleções acidentais de texto ao apertar os botões */
+            user-select: none; 
         }
-        button {
-            padding: 20px 40px;
+        
+        /* Layout de 3 colunas: Freio | Painel Central | Acelerador */
+        .area-botao {
+            width: 30%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-size: 24px;
+            font-weight: bold;
+            color: white;
+            text-transform: uppercase;
+        }
+
+        #btnFreio {
+            background-color: #f44336; /* Vermelho */
+            border-right: 5px solid #b71c1c;
+        }
+        
+        /* Efeito visual de apertar o botão */
+        #btnFreio:active { background-color: #d32f2f; }
+
+        #btnAcelerar {
+            background-color: #4CAF50; /* Verde */
+            border-left: 5px solid #2e7d32;
+        }
+        
+        #btnAcelerar:active { background-color: #388e3c; }
+
+        .painel-central {
+            width: 40%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: #333;
+        }
+
+        #btnIniciar {
+            padding: 15px 30px;
+            font-size: 20px;
             border-radius: 10px;
-            background-color: #4CAF50;
+            background-color: #2196F3;
             color: white;
             border: none;
-            margin-bottom: 20px;
             cursor: pointer;
+            margin-bottom: 20px;
         }
-        #status { font-size: 18px; color: #ffeb3b; margin-bottom: 10px; }
-        .dado { font-size: 32px; font-weight: bold; margin: 10px 0; }
+
+        #status { font-size: 16px; color: #ffeb3b; margin-bottom: 10px; text-align: center; }
+        .dado { font-size: 48px; font-weight: bold; margin: 10px 0; }
         .label { font-size: 14px; color: #aaa; }
     </style>
 </head>
 <body>
 
-    <button id="btnIniciar">Iniciar Volante</button>
-    <div id="status">Aguardando...</div>
-    
-    <div class="label">DIREÇÃO</div>
-    <div id="divVolante" class="dado">0°</div>
-    
-    <div class="label">PEDAIS</div>
-    <div id="divPedal" class="dado">Neutro</div>
+    <div id="btnFreio" class="area-botao">
+        Freio / Ré
+    </div>
+
+    <div class="painel-central">
+        <button id="btnIniciar">Iniciar Volante</button>
+        <div id="status">Aguardando...</div>
+        
+        <div class="label">DIREÇÃO</div>
+        <div id="divVolante" class="dado">0°</div>
+    </div>
+
+    <div id="btnAcelerar" class="area-botao">
+        Acelerar
+    </div>
 
     <script>
         // === COLOQUE O IP DO SEU COMPUTADOR AQUI ===
-        const ipComputador = "192.168.0.3"; 
+        const ipComputador = "192.168.1.XXX"; 
         const porta = "8080";
         
         let ws;
+        let estadoPedalAtual = 'neutro';
+
         const statusDiv = document.getElementById('status');
         const divVolante = document.getElementById('divVolante');
-        const divPedal = document.getElementById('divPedal');
         const btnIniciar = document.getElementById('btnIniciar');
+        const btnFreio = document.getElementById('btnFreio');
+        const btnAcelerar = document.getElementById('btnAcelerar');
 
         function conectarWebSocket() {
             ws = new WebSocket(`ws://${ipComputador}:${porta}`);
@@ -69,23 +117,28 @@
             };
         }
 
-        function processarSensores(evento) {
-            // Em modo paisagem, Beta costuma ser o giro e Gamma a inclinação frontal.
-            let giro = Math.round(evento.beta); 
-            let inclinacao_frontal = Math.round(evento.gamma);
+        // Eventos dos botões (Touch para celular, Mouse para testar no PC se quiser)
+        // Acelerar
+        btnAcelerar.addEventListener('touchstart', (e) => { e.preventDefault(); estadoPedalAtual = 'frente'; });
+        btnAcelerar.addEventListener('touchend', (e) => { e.preventDefault(); estadoPedalAtual = 'neutro'; });
+        btnAcelerar.addEventListener('mousedown', (e) => { estadoPedalAtual = 'frente'; });
+        btnAcelerar.addEventListener('mouseup', (e) => { estadoPedalAtual = 'neutro'; });
 
+        // Freiar
+        btnFreio.addEventListener('touchstart', (e) => { e.preventDefault(); estadoPedalAtual = 're'; });
+        btnFreio.addEventListener('touchend', (e) => { e.preventDefault(); estadoPedalAtual = 'neutro'; });
+        btnFreio.addEventListener('mousedown', (e) => { estadoPedalAtual = 're'; });
+        btnFreio.addEventListener('mouseup', (e) => { estadoPedalAtual = 'neutro'; });
+
+        function processarSensores(evento) {
+            let giro = Math.round(evento.beta); 
             divVolante.innerText = `${giro}°`;
-            
-            // Texto visual na tela do celular para ajudar a entender o que está acontecendo
-            if (inclinacao_frontal > 15) divPedal.innerText = "Acelerando ⬆️";
-            else if (inclinacao_frontal < -15) divPedal.innerText = "Ré / Freio ⬇️";
-            else divPedal.innerText = "Neutro ⏹️";
 
             if (ws && ws.readyState === WebSocket.OPEN) {
-                // Envia os dois comandos ao mesmo tempo
+                // Envia a direção e o estado dos botões de uma vez
                 ws.send(JSON.stringify({ 
                     volante: giro,
-                    pedal: inclinacao_frontal
+                    pedal: estadoPedalAtual
                 }));
             }
         }
